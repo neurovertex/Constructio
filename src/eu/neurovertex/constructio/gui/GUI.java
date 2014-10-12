@@ -27,7 +27,6 @@ public class GUI implements Tickable {
 		window.pack();
 		window.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
 		window.setVisible(true);
-		window.setResizable(false);
 		Scheduler.addTickable(this);
 	}
 

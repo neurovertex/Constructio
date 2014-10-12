@@ -1,11 +1,11 @@
 package eu.neurovertex.constructio.gui;
 
-import eu.neurovertex.constructio.Distances;
-import eu.neurovertex.constructio.Grid;
+import eu.neurovertex.constructio.*;
 import eu.neurovertex.constructio.Grid.Square;
-import eu.neurovertex.constructio.GridUtils;
 import eu.neurovertex.constructio.entities.AbstractFreeEntity;
 import eu.neurovertex.constructio.entities.FreeEntity;
+import eu.neurovertex.constructio.entities.ShitMover;
+import eu.neurovertex.constructio.entities.Stockpile;
 
 import javax.swing.*;
 import java.awt.*;
@@ -32,7 +32,8 @@ public class GridPanel extends JPanel {
 	public GridPanel(Grid gr) {
 		this.grid = gr;
 		setBackground(Color.BLACK);
-		setPreferredSize(new Dimension(side*grid.getWidth(), side*grid.getHeight()));
+		setPreferredSize(new Dimension(side * grid.getWidth(), side * grid.getHeight()));
+		setMaximumSize(new Dimension(side * grid.getWidth(), side * grid.getHeight()));
 		addMouseListener(new MouseAdapter() {
 			@Override
 			public void mousePressed(MouseEvent e) {
@@ -57,10 +58,8 @@ public class GridPanel extends JPanel {
 				if (path.isPresent())
 					new AbstractFreeEntity(path.get().getFirst(), 0.1) {
 						@Override
-						public void update() {
-							super.update();
-							if (!getPath().isPresent())
-								destroyEntity();
+						public void onArrival() {
+							destroyEntity();
 						}
 					}.setPath(path.get());
 			}
@@ -91,41 +90,59 @@ public class GridPanel extends JPanel {
 	}
 
 	@Override
-	protected void paintComponent(Graphics g) {
-		super.paintComponent(g);
+	protected void paintComponent(Graphics graph) {
+		super.paintComponent(graph);
 		final int w = getWidth(), h = getHeight();
+		graph.setClip(0, 0, side*grid.getWidth(), side*grid.getHeight());
+		{
+			BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+			for (int i = 0; i < grid.getWidth(); i++)
+				for (int j = 0; j < grid.getHeight(); j++)
+					paintSquare(img.getSubimage(i * side, j * side, side, side).createGraphics(), grid.get(i, j));
+			graph.drawImage(img, 0, 0, null);
+		}
 
-		BufferedImage img = new BufferedImage(side, side, BufferedImage.TYPE_INT_ARGB);
-		Graphics2D graph = img.createGraphics();
-		for (int i = 0; i < grid.getWidth(); i ++)
-			for (int j = 0; j < grid.getHeight(); j ++) {
-				graph.clearRect(0, 0, side, side);
-				paintSquare(graph, grid.get(i, j));
-				g.drawImage(img, i * side, j * side, null);
-			}
-		path.ifPresent(p -> paintPath(g, new Color(255, 64, 64, 192), p));
-
-		grid.getFreeEntities().stream().forEach(e -> paintEntity(g, e));
-
-		g.setColor(Color.GRAY);
+		graph.setColor(Color.GRAY);
 		for (int i = 1; i < grid.getWidth(); i ++) {
-			g.drawLine(i*side, 0, i*side, h-1);
+			graph.drawRect(i * side - 1, 0, 1, h);
 		}
 		for (int i = 1; i < grid.getHeight(); i ++) {
-			g.drawLine(0, i*side, w-1, i*side);
+			graph.drawRect(0, i * side - 1, w, 1);
 		}
+		grid.getFreeEntities().stream().filter(entity -> entity instanceof AbstractFreeEntity && ((AbstractFreeEntity)entity).getPath().isPresent())
+				.forEach(e -> paintPath(graph, new Color(255, 92, 92, 128), ((AbstractFreeEntity) e).getPath().get()));
+		path.ifPresent(p -> paintPath(graph, new Color(255, 92, 92, 64), p));
+		grid.getFreeEntities().stream().forEach(e -> paintEntity(graph, e));
 	}
 
 	private void paintSquare(Graphics2D g, Square square) {
-		if (!square.getEntity().isPresent())
-			return;
-		Grid.GridEntity entity = square.getEntity().get();
-		if (entity.isSolid(square)) {
-			g.setColor(COL_SOLID);
-			g.fillRect(side / 8, side / 8, 6 * side / 8, 6 * side / 8);
-		} else {
-			g.setColor(COL_NONSOLID);
-			g.drawOval(side/4, side/4, side/2, side/2);
+		g.setColor(square.getTerrain().getColor());
+		g.fillRect(0, 0, side, side);
+		if (square.getEntity().isPresent()) {
+			Grid.GridEntity entity = square.getEntity().get();
+			if (entity.isSolid(square)) {
+				g.setColor(COL_SOLID);
+				g.fillRoundRect(0, 0, side, side, side / 8, side / 8);
+				if (entity instanceof Stockpile) {
+					Stockpile sp = (Stockpile) entity;
+					Inventory inv = sp.getInventory(square.getX() - sp.getX(), square.getY() - sp.getY());
+					int areaSide = side * 3 / 4, areaOffset = side / 8;
+					g.clearRect(areaOffset, areaOffset, areaSide, areaSide);
+					paintInventory(g, square, inv, areaSide, areaOffset );
+				}
+			} else {
+				g.setColor(COL_NONSOLID);
+				g.drawOval(side / 4, side / 4, side / 2, side / 2);
+			}
+		}
+	}
+
+	private void paintInventory(Graphics2D g, Square square, Inventory inv, int areaSide, int areaOffset) {
+		if (inv.getAmount() > 0) {
+			int amount = inv.getAmount()*areaSide / inv.getCapacity(), offset = areaSide - amount;
+			Resource r = inv.getResources().iterator().next();
+			g.setColor(r.getColor());
+			g.fillRect(areaOffset, areaOffset+offset, areaSide, amount);
 		}
 	}
 
@@ -138,8 +155,16 @@ public class GridPanel extends JPanel {
 	}
 
 	private void paintEntity(Graphics g, FreeEntity entity) {
-		int size = side/2, offset = side/2-size/2;
-		g.setColor(Color.GREEN);
-		g.drawOval((int)Math.round(entity.getX()*side+offset), (int)Math.round(entity.getY()*side+offset), size, size);
+		int size = side*3/4, offset = (side-size)/2;
+		g.setColor(Color.GREEN.darker());
+		g.fillOval((int) Math.round(entity.getX() * side + offset), (int) Math.round(entity.getY() * side + offset), size, size);
+		if (entity instanceof ShitMover && ((ShitMover)entity).getInventory().getAmount() > 0) {
+			size = size*2/3;
+			offset = (side-size)/2;
+			Inventory inv = ((ShitMover)entity).getInventory();
+			int angle = inv.getAmount()*360 / inv.getCapacity();
+			g.setColor(inv.getResources().iterator().next().getColor());
+			g.fillArc((int)Math.round(entity.getX()*side+offset), (int)Math.round(entity.getY()*side+offset), size, size, 0, angle);
+		}
 	}
 }

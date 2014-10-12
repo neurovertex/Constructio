@@ -1,7 +1,6 @@
 package eu.neurovertex.constructio;
 
 import java.util.*;
-import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
 
 import static eu.neurovertex.constructio.Constructio.log;
@@ -13,7 +12,7 @@ import static eu.neurovertex.constructio.Constructio.log;
 public final class GridUtils {
 	private GridUtils() {}
 
-	public static Optional<Path> findPath(Grid grid, Grid.Square src, Function<Grid.Square, Boolean> dst,
+	public static Optional<Path> findPath(Grid grid, Grid.Square src, Grid.Region dst,
 										  DistanceFunction dist, ToDoubleFunction<Path> heuristic) {
 		return new PathFinder().with(dist).with(heuristic).from(src).to(dst).find(grid);
 	}
@@ -36,7 +35,7 @@ public final class GridUtils {
 
 	public static class PathFinder {
 		private Path src;
-		private Function<Grid.Square, Boolean> dst;
+		private Grid.Region dst;
 		private DistanceFunction distance = Distances.defaultDistance();
 		private Optional<ToDoubleFunction<Path>> heuristic = Optional.empty();
 
@@ -52,8 +51,10 @@ public final class GridUtils {
 			return this;
 		}
 
-		public PathFinder to(Function<Grid.Square, Boolean> dst) {
+		public PathFinder to(Grid.Region dst) {
 			this.dst = dst;
+			if (dst.getCenter().isPresent())
+				heuristic = Optional.of(p -> p.getDistance() + distance(p.getLast(), dst.getCenter().get()));
 			return this;
 		}
 
@@ -66,6 +67,8 @@ public final class GridUtils {
 
 		public PathFinder with(DistanceFunction function) {
 			this.distance = function;
+			if (src != null)
+				src.setDistanceFunction(function);
 			return this;
 		}
 
@@ -88,7 +91,7 @@ public final class GridUtils {
 				srcPath = srcPath.get().getParent();
 			}
 
-			while (paths.size() > 0 && !dst.apply(paths.peek().getLast())) {
+			while (paths.size() > 0 && !dst.test(paths.peek().getLast())) {
 				Path p = paths.poll();
 				Set<Grid.Square> adj = p.getLast().getAdjacent();
 				for (Grid.Square sq : adj) {

@@ -26,7 +26,7 @@ public class Constructio {
 	}
 
 	public void run() {
-
+		Scheduler.setEnabled(false);
 	}
 
 	public Grid getGrid() {

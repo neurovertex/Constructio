@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 public class Scheduler {
 	private static List<Tickable> tickables = new ArrayList<>();
 	private static int period;
+	private static boolean enabled = false;
 	private final static Timer timer = new Timer("Scheduler Timer", true);
 	private final static TimerTask task = new TimerTask() {
 		@Override
@@ -46,10 +47,16 @@ public class Scheduler {
 	}
 
 	private synchronized static void tick() {
+		if (!enabled)
+			return;
 		List<Tickable> remove = tickables.stream().filter(Tickable::tick).collect(Collectors.toList());
 		tickables.removeAll(remove);
 		if (tickables.size() == 0) {
 			System.out.println("No tickables left, stopping update thread");
 		}
+	}
+
+	public static void setEnabled(boolean enabled) {
+		Scheduler.enabled = enabled;
 	}
 }

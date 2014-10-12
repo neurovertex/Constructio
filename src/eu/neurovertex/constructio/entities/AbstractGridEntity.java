@@ -2,8 +2,10 @@ package eu.neurovertex.constructio.entities;
 
 import eu.neurovertex.constructio.Constructio;
 import eu.neurovertex.constructio.Grid;
+import eu.neurovertex.constructio.Terrain;
 
 import java.awt.*;
+import java.util.Optional;
 
 /**
  * @author Neurovertex
@@ -34,7 +36,17 @@ public abstract class AbstractGridEntity implements Grid.GridEntity {
 
 	@Override
 	public Grid.Region getRegion() {
-		return sq -> region.contains(sq.getX()+0.5, sq.getY()+0.5);
+		return new Grid.Region() {
+			@Override
+			public boolean test(Grid.Square sq) {
+				return region.contains(sq.getX()+0.5, sq.getY()+0.5);
+			}
+
+			@Override
+			public Optional<Grid.Square> getCenter() {
+				return Optional.of(Constructio.getInstance().getGrid().get(region.getCenterX(), region.getCenterY()));
+			}
+		};
 	}
 
 	@Override
@@ -49,7 +61,7 @@ public abstract class AbstractGridEntity implements Grid.GridEntity {
 
 	@Override
 	public boolean canAdd() {
-		return Constructio.getInstance().getGrid().getSquares(getRegion()).filter(g -> g.getEntity().isPresent()).count() == 0;
+		return Constructio.getInstance().getGrid().getSquares(getRegion()).filter(g -> g.getEntity().isPresent() || g.getTerrain() != Terrain.GROUND).count() == 0;
 	}
 
 	@Override
@@ -60,5 +72,10 @@ public abstract class AbstractGridEntity implements Grid.GridEntity {
 	@Override
 	public boolean isRemoved() {
 		return removed;
+	}
+
+	@Override
+	public String toString() {
+		return String.format("%s at %d:%d", getClass().getSimpleName(), getX(), getY());
 	}
 }

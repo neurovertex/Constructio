@@ -90,8 +90,16 @@ public class Grid extends Observable implements Tickable {
 		return Collections.unmodifiableSet(gridEntities);
 	}
 
+	public <E extends GridEntity> Stream<E> getGridEntities(Class<E> c) {
+		return getGridEntities().stream().filter(c::isInstance).map(c::cast);
+	}
+
 	public Set<FreeEntity> getFreeEntities() {
 		return Collections.unmodifiableSet(freeEntities);
+	}
+
+	public <E extends FreeEntity> Stream<E> getFreeEntities(Class<E> c) {
+		return getFreeEntities().stream().filter(c::isInstance).map(c::cast);
 	}
 
 	public void addFreeEntity(FreeEntity entity) {
@@ -112,6 +120,7 @@ public class Grid extends Observable implements Tickable {
 	public class Square {
 		private final int x, y;
 		private Optional<GridEntity> entity = Optional.empty();
+		private Terrain terrain = Terrain.GROUND;
 		private Set<Square> adjacents;
 
 		public Square(int x, int y) {
@@ -121,7 +130,7 @@ public class Grid extends Observable implements Tickable {
 
 		public void setEntity(GridEntity entity) {
 			if (this.entity.isPresent())
-				throw new IllegalStateException("Can't put ");
+				throw new IllegalStateException("Entity already set");
 			this.entity = Optional.of(entity);
 			setChanged();
 			notifyObservers(entity);
@@ -149,6 +158,10 @@ public class Grid extends Observable implements Tickable {
 			return entity;
 		}
 
+		public boolean isSolid() {
+			return terrain.isSolid() || entity.map(e -> e.isSolid(this)).orElse(false);
+		}
+
 		public Set<Square> getAdjacent() {
 			if (adjacents == null) {
 				Stream<Square> squares = ADJ.stream().map((a) -> new int[]{a[0] + x, a[1] + y}) // Make absolute coordinates
@@ -163,14 +176,43 @@ public class Grid extends Observable implements Tickable {
 		public String toString() {
 			return String.format("<%d:%d,e:%s>", x, y, entity.isPresent());
 		}
+
+		public void setTerrain(Terrain terrain) {
+			this.terrain = terrain;
+		}
+
+		public Terrain getTerrain() {
+			return terrain;
+		}
 	}
 
-	public interface Region extends Predicate<Square> {}
+	@FunctionalInterface
+	public interface Region extends Predicate<Square> {
+		default Optional<Square> getCenter() {
+			return Optional.empty();
+		}
+		default Region increment() {
+			final Region reg = this;
+			return new Region() {
+				@Override
+				public boolean test(Square square) {
+					return square.getAdjacent().stream().filter(reg::test).count() > 0;
+				}
+				@Override
+				public Optional<Square> getCenter() {
+					return reg.getCenter();
+				}
+			};
+		}
+	}
 
 	public interface GridEntity {
 		public boolean isSolid(Square pos);
 
 		public Region getRegion();
+		default Region getInteractibleRection() {
+			return getRegion().increment();
+		}
 		public int getX();
 		public int getY();
 

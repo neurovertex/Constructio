@@ -14,7 +14,9 @@ import static eu.neurovertex.constructio.GridUtils.Path;
  *         Date: 30/09/2014, 15:50
  */
 public abstract class AbstractFreeEntity implements FreeEntity, Tickable {
-	private Optional<Iterator<Grid.Square>> path = Optional.empty();
+	private final Grid grid;
+	private Optional<Iterator<Grid.Square>> pathSquares = Optional.empty();
+	private Optional<Path> path = Optional.empty();
 	private double x, y;
 	private Optional<Grid.Square> next = Optional.empty();
 	private double speed;
@@ -24,6 +26,7 @@ public abstract class AbstractFreeEntity implements FreeEntity, Tickable {
 		this.x = position.getX();
 		this.y = position.getY();
 		this.speed = speed;
+		this.grid = position.getGrid();
 		Scheduler.addTickable(this);
 		position.getGrid().addFreeEntity(this);
 	}
@@ -35,16 +38,18 @@ public abstract class AbstractFreeEntity implements FreeEntity, Tickable {
 	}
 
 	public void update() {
-		if (path.isPresent() && !next.isPresent()) {
-			if (path.get().hasNext())
-				next = Optional.of(path.get().next());
+		if (pathSquares.isPresent() && !next.isPresent()) {
+			if (pathSquares.get().hasNext())
+				next = Optional.of(pathSquares.get().next());
 			else
-				path = Optional.empty();
+				pathSquares = Optional.empty();
 		}
 		if (next.isPresent()) {
 			double dist = speed;
 			while (dist > 0 && next.isPresent())
 				dist = advance(dist);
+			if (!pathSquares.isPresent())
+				onArrival();
 		}
 	}
 
@@ -58,15 +63,18 @@ public abstract class AbstractFreeEntity implements FreeEntity, Tickable {
 		} else {
 			x = next.get().getX();
 			y = next.get().getY();
-			if (path.isPresent() && path.get().hasNext())
-				next = Optional.of(path.get().next());
+			if (pathSquares.isPresent() && pathSquares.get().hasNext())
+				next = Optional.of(pathSquares.get().next());
 			else {
 				next = Optional.empty();
 				path = Optional.empty();
+				pathSquares = Optional.empty();
 			}
 			return advance - dist;
 		}
 	}
+
+	public abstract void onArrival();
 
 	@Override
 	public double getX() {
@@ -94,10 +102,15 @@ public abstract class AbstractFreeEntity implements FreeEntity, Tickable {
 	}
 
 	public void setPath(Path path) {
-		this.path = Optional.of(path.iterator());
+		this.path = Optional.of(path);
+		this.pathSquares = Optional.of(path.iterator());
 	}
 
-	public Optional<Iterator<Grid.Square>> getPath() {
+	public Grid getGrid() {
+		return grid;
+	}
+
+	public Optional<Path> getPath() {
 		return path;
 	}
 }
